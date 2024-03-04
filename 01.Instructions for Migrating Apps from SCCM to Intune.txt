@@ -1,4 +1,6 @@
 This worked for me your mileage may vary.
+Will require MS Win32 Content Prep tool 
+https://github.com/Microsoft/Microsoft-Win32-Content-Prep-Tool
 1.Connect to SCCM Database with SQL server management studio
 2. Run "SQLQuerrytogetDeploymentInfo" to return existing application information
 3. Save the results as CSV. Sometimes the column headers won't export so you may need to add them. 
