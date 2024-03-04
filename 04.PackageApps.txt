@@ -1,0 +1,39 @@
+# Specify the path to IntuneWinAppUtil.exe
+$intuneWinAppUtilPath = 'Path\to\IntuneWinAppUtil.exe
+# Specify the path to the folder containing setup folders
+$mainFolderPath = 'Path\to\app\files'
+
+# Specify the output folder for IntuneWin packages
+$outputFolderPath = 'Path\to\where\you\want\IntuneWinAppUtil\outputs'
+
+# Get a list of subfolders in the main folder
+$subfolders = Get-ChildItem -Path $mainFolderPath -Directory
+
+# Iterate through each subfolder
+foreach ($subfolder in $subfolders) {
+    # Print the name of the current subfolder
+    Write-Host "Processing subfolder: $($subfolder.Name)"
+
+    # Specify the path to the first .msi file in the current subfolder
+    $msiFilePath = Get-ChildItem -Path $subfolder.FullName -Filter "*.msi" | Select-Object -ExpandProperty FullName
+
+    # If no .msi file is found, use the first .exe file
+    if (-not $msiFilePath) {
+        $msiFilePath = Get-ChildItem -Path $subfolder.FullName -Filter "*.exe" | Select-Object -ExpandProperty FullName
+    }
+
+    # Check if a setup file was found
+    if ($msiFilePath -ne $null) {
+        # Specify the output folder for the current subfolder
+        $outputSubfolderPath = Join-Path -Path $outputFolderPath -ChildPath $subfolder.Name
+
+        # Create the output folder if it doesn't exist
+        New-Item -ItemType Directory -Path $outputSubfolderPath -Force
+
+        # Run IntuneWinAppUtil for the current subfolder
+        & $intuneWinAppUtilPath -c $subfolder.FullName -s $msiFilePath -o $outputSubfolderPath
+    }
+    else {
+        Write-Host "No setup file found in $($subfolder.Name)"
+    }
+}

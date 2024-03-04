@@ -1,0 +1,51 @@
+
+
+-- CTE with XML namespaces declaration
+WITH XMLNAMESPACES (DEFAULT 'http://schemas.microsoft.com/SystemsCenterConfigurationManager/2009/06/14/Rules', 'http://schemas.microsoft.com/SystemCenterConfigurationManager/2009/AppMgmtDigest' AS p1)
+-- Main query
+SELECT
+    A.[App Name],
+    MAX(A.[DT Name]) AS [DT Title],
+    A.Type,
+    A.ContentLocation,
+    A.InstallCommandLine,
+    A.UninstallCommandLine,
+    A.ExecutionContext,
+    A.RequiresLogOn,
+    A.UserInteractionMode,
+    A.OnFastNetwork,
+    A.OnSlowNetwork,
+    A.DetectAction
+FROM (
+    -- Subquery with XQuery expressions
+    SELECT
+        LPC.DisplayName AS [App Name],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Title)[1]', 'nvarchar(max)') AS [DT Name],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/@Technology)[1]', 'nvarchar(max)') AS [Type],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:Contents/p1:Content/p1:Location)[1]', 'nvarchar(max)') AS [ContentLocation],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:InstallAction/p1:Args/p1:Arg)[1]', 'nvarchar(max)') AS [InstallCommandLine],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:UninstallAction/p1:Args/p1:Arg)[1]', 'nvarchar(max)') AS [UninstallCommandLine],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:InstallAction/p1:Args/p1:Arg)[3]', 'nvarchar(max)') AS [ExecutionContext],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:InstallAction/p1:Args/p1:Arg)[4]', 'nvarchar(max)') AS [RequiresLogOn],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:InstallAction/p1:Args/p1:Arg)[8]', 'nvarchar(max)') AS [UserInteractionMode],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:Contents/p1:Content/p1:OnFastNetwork)[1]', 'nvarchar(max)') AS [OnFastNetwork],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:Contents/p1:Content/p1:OnSlowNetwork)[1]', 'nvarchar(max)') AS [OnSlowNetwork],
+        LDT.SDMPackageDigest.value('(/p1:AppMgmtDigest/p1:DeploymentType/p1:Installer/p1:DetectAction)[1]', 'nvarchar(max)') AS DetectAction
+    FROM
+        dbo.fn_ListApplicationCIs(1033) LPC
+        RIGHT JOIN fn_ListDeploymentTypeCIs(1033) LDT ON LDT.AppModelName = LPC.ModelName
+    WHERE
+        LDT.CIType_ID = 21 AND LDT.IsLatest = 1
+) A
+GROUP BY
+    A.[App Name],
+    A.Type,
+    A.ContentLocation,
+    A.InstallCommandLine,
+    A.UninstallCommandLine,
+    A.ExecutionContext,
+    A.RequiresLogOn,
+    A.UserInteractionMode,
+    A.OnFastNetwork,
+    A.OnSlowNetwork,
+    A.DetectAction;

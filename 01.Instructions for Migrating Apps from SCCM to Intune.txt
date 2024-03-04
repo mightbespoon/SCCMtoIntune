@@ -1,0 +1,13 @@
+This worked for me your mileage may vary.
+1.Connect to SCCM Database with SQL server management studio
+2. Run "SQLQuerrytogetDeploymentInfo" to return existing application information
+3. Save the results as CSV. Sometimes the column headers won't export so you may need to add them. 
+4. In the CSV find and replace all "LocalSystem<" with "<"and "MSISystem{" with "{" 
+(I'm positive there's a way to modify the querry to not return that as part of the data, but I'm bad at SQL"
+5.If there are applications you do not wish to migrate remove them from your CSV.
+6.Run the CopyAppContenttoLocation script.
+7.Run the PackageApps script
+8.Run WriteDetectionMethodsandProductCodesCommandstoAppFolders
+9.Run WriteDetectionMethodType
+10.Run Iterate through each package folder extract registry detection and file detection info from xml
+11.Run UploadScript.

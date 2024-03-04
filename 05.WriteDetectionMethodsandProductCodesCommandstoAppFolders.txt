@@ -1,0 +1,48 @@
+$csvFilePath = "Path\to\your\app\info\csv"
+$mainFolderPath = "Path\to\your\packaged\apps"
+
+# Read the CSV file
+$csvData = Import-Csv $csvFilePath
+
+# Iterate through each subfolder
+$subfolders = Get-ChildItem -Path $mainFolderPath -Directory
+
+foreach ($subfolder in $subfolders) {
+    # Get the subfolder name
+    $subfolderName = $subfolder.Name
+
+    # Find the corresponding row in the CSV based on the subfolder name
+    $matchingRow = $csvData | Where-Object { $_.AppName -eq $subfolderName }
+
+    # Check if a matching row was found
+    if ($matchingRow -ne $null) {
+        # Get the values from the CSV row
+        $detectAction = $matchingRow.DetectAction
+        $installCommand = $matchingRow.InstallCommandLine
+        $uninstallCommand = $matchingRow.UninstallCommandLine  
+
+        # Specify the output file paths
+        # Check if DetectAction starts with '<?xml'
+        if ($detectAction -match '^<\?xml') {
+            $detectAction | Out-File -FilePath (Join-Path -Path $subfolder.FullName -ChildPath 'detection.xml') -Encoding ASCII
+            Write-Host "Value written to detection.xml for $($subfolder.Name)"
+        }
+        # Check if DetectAction starts with '{'
+        elseif ($detectAction -match '^\{') {
+            $detectAction | Out-File -FilePath (Join-Path -Path $subfolder.FullName -ChildPath 'ProductCode.txt') -Encoding ASCII
+            Write-Host "Value written to ProductCode.txt for $($subfolder.Name)"
+        }
+
+        # Write values to text files
+        $installCommand | Out-File -FilePath (Join-Path -Path $subfolder.FullName -ChildPath 'InstallCommand.txt') -Encoding ASCII
+        Write-Host "Value written to InstallCommand.txt for $($subfolder.Name)"
+
+        # Write UninstallCommandLine to UninstallCommand.txt
+        $uninstallCommand | Out-File -FilePath (Join-Path -Path $subfolder.FullName -ChildPath 'UninstallCommand.txt') -Encoding ASCII
+        Write-Host "Value written to UninstallCommand.txt for $($subfolder.Name)"
+
+        Write-Host "Values written to $($subfolder.Name)"
+    } else {
+        Write-Host "No matching data found for $($subfolder.Name)"
+    }
+}

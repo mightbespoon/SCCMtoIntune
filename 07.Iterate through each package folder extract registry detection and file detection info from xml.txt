@@ -1,0 +1,150 @@
+# Set the root folder path
+$rootFolderPath = "Path\to\your\Intune App Packages"
+
+# Iterate through subfolders
+foreach ($subfolder in Get-ChildItem -Path $rootFolderPath -Directory) {
+    # Construct the path to detection.xml file
+    $xmlFilePath = Join-Path -Path $subfolder.FullName -ChildPath "detection.xml"
+
+    # Construct the path to DetectionMethod.txt file
+    $detectionMethodFilePath = Join-Path -Path $subfolder.FullName -ChildPath "DetectionMethod.txt"
+
+    # Check if DetectionMethod.txt file exists
+    if (Test-Path $detectionMethodFilePath) {
+        # Read the content of DetectionMethod.txt
+        $detectionMethod = Get-Content -Path $detectionMethodFilePath -Raw
+
+        # Check the content of DetectionMethod.txt
+        switch ($detectionMethod.Trim()) {
+            "MSI" {
+                Write-Host "Skipping folder $($subfolder.FullName) as DetectionMethod is MSI."
+                continue
+            }
+            "File" {
+                # Proceed with file detection logic
+                $xmlContent = Get-Content -Path $xmlFilePath -Raw
+
+                # Extract information between <Path> and </Path> tags
+                $pathInfo = [regex]::match($xmlContent, '(?<=<Path>).*?(?=<\/Path>)').Value
+                $pathInfo | Out-File -FilePath (Join-Path -Path $subfolder.FullName -ChildPath "Path.txt") -Force
+                Write-Host "Data exported to: $(Join-Path -Path $subfolder.FullName -ChildPath 'Path.txt')"
+
+                # Extract information between <Filter> and </Filter> tags
+                $filterInfo = [regex]::match($xmlContent, '(?<=<Filter>).*?(?=<\/Filter>)').Value
+                $filterInfo | Out-File -FilePath (Join-Path -Path $subfolder.FullName -ChildPath "File.txt") -Force
+                Write-Host "Data exported to: $(Join-Path -Path $subfolder.FullName -ChildPath 'File.txt')"
+
+                Write-Host "Processing folder $($subfolder.FullName) for File detection."
+            }
+            "Registry" {
+                # Proceed with registry detection logic
+                [xml]$xml = Get-Content -Path $xmlFilePath -Raw
+
+                # Define namespace manager
+                $nsManager = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+                $nsManager.AddNamespace('rules', 'http://schemas.microsoft.com/SystemsCenterConfigurationManager/2009/06/14/Rules')
+                $nsManager.AddNamespace('dc', 'http://schemas.microsoft.com/SystemsCenterConfigurationManager/2009/07/10/DesiredConfiguration')
+                $nsManager.AddNamespace('app', 'http://schemas.microsoft.com/SystemCenterConfigurationManager/2009/AppMgmtDigest')
+
+                # Define XPath query for version comparison
+                $versionComparison = "//rules:Expression/rules:Operands/rules:SettingReference/@DataType[. = 'Version']"
+
+                # Define XPath query for existence detection
+                $existenceDetection = "//dc:SimpleSetting/dc:RegistryDiscoverySource[@PropertyPath = 'RegistryValueExists']"
+
+                # Define XPath query for string comparison
+                $stringComparison = "//rules:Expression/rules:Operator[. = 'Equals' and ../rules:Operands/rules:SettingReference/@DataType[. = 'String']]"
+
+                # Check if it is a version comparison rule
+                if ($xml.SelectSingleNode($versionComparison, $nsManager)) {
+                    # Extract information for version comparison rule
+                    $registryHiveValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/@Hive", $nsManager).Value
+                    $keyPathValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/dc:Key", $nsManager).InnerText
+                    $valueNameValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/dc:ValueName", $nsManager).InnerText
+                    $operatorValue = $xml.SelectSingleNode("//rules:Expression/rules:Operator", $nsManager).InnerText
+                    $detectionValueValue = $xml.SelectSingleNode("//rules:Expression/rules:Operands/rules:ConstantValue/@Value", $nsManager).Value
+                    $check32BitOn64SystemValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/@Is64Bit", $nsManager).Value
+
+                    # Create a custom object with extracted values for version comparison
+                    $result = [PSCustomObject]@{
+                        RuleType = "VersionComparison"
+                        Operator = $operatorValue
+                        DetectionValue = $detectionValueValue
+                        Check32BitOn64System = $check32BitOn64SystemValue
+                        KeyPath = "$registryHiveValue\$keyPathValue"
+                        ValueName = $valueNameValue
+                    }
+
+                    # Output the result to CSV in the same subfolder
+                    $result | Export-Csv -Path (Join-Path -Path $subfolder.FullName -ChildPath "Output.csv") -NoTypeInformation -Force
+                    Write-Host "Data exported to: $(Join-Path -Path $subfolder.FullName -ChildPath 'Output.csv')"
+                }
+                # Check if it is an existence detection rule
+                elseif ($xml.SelectSingleNode($existenceDetection, $nsManager)) {
+                    # Extract information for existence detection rule
+                    $registryHiveValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/@Hive", $nsManager).Value
+                    $keyPathValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/dc:Key", $nsManager).InnerText
+                    $valueNameValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/dc:ValueName", $nsManager).InnerText
+                    $settingReferencePathValue = $xml.SelectSingleNode("//rules:Expression/rules:Operands/rules:SettingReference/@LogicalName", $nsManager).Value
+                    $settingReferenceDataTypeValue = $xml.SelectSingleNode("//rules:Expression/rules:Operands/rules:SettingReference/@DataType", $nsManager).Value
+                    $settingReferenceValueValue = $xml.SelectSingleNode("//rules:Expression/rules:Operands/rules:SettingReference/rules:ConstantValue/@Value", $nsManager).Value
+                    $is64BitValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/@Is64Bit", $nsManager).Value
+
+                    # Prepare data for CSV
+                    $csvData = [PSCustomObject]@{
+                        RuleType = "ExistenceDetection"
+                        RegistryHive = $registryHiveValue
+                        KeyPath = "$registryHiveValue\$keyPathValue"
+                        ValueName = $valueNameValue
+                        SettingReferencePath = $settingReferencePathValue
+                        SettingReferenceDataType = $settingReferenceDataTypeValue
+                        SettingReferenceValue = $settingReferenceValueValue
+                        Is64Bit = $is64BitValue
+                    }
+
+                    # Output the result to CSV in the same subfolder
+                    $csvData | Export-Csv -Path (Join-Path -Path $subfolder.FullName -ChildPath "Output.csv") -NoTypeInformation -Force
+                    Write-Host "Data exported to: $(Join-Path -Path $subfolder.FullName -ChildPath 'Output.csv')"
+                }
+                # Check if it is a string comparison rule
+                elseif ($xml.SelectSingleNode($stringComparison, $nsManager)) {
+                    # Extract information for string comparison rule
+                    $registryHiveValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/@Hive", $nsManager).Value
+                    $keyPathValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/dc:Key", $nsManager).InnerText
+                    $valueNameValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/dc:ValueName", $nsManager).InnerText
+                    $operatorValue = $xml.SelectSingleNode("//rules:Expression/rules:Operator", $nsManager).InnerText
+                    $detectionValueValue = $xml.SelectSingleNode("//rules:Expression/rules:Operands/rules:ConstantValue/@Value", $nsManager).Value
+                    $check32BitOn64SystemValue = $xml.SelectSingleNode("//dc:SimpleSetting/dc:RegistryDiscoverySource/@Is64Bit", $nsManager).Value
+
+                    # Append registry hive to key path
+                    $keyPathValue = "$registryHiveValue\$keyPathValue"
+
+                    # Prepare data for CSV
+                    $csvData = [PSCustomObject]@{
+                        RuleType = "StringComparison"
+                        Operator = $operatorValue
+                        DetectionValue = $detectionValueValue
+                        Check32BitOn64System = $check32BitOn64SystemValue
+                        KeyPath = $keyPathValue
+                        ValueName = $valueNameValue
+                        DetectionType = 'string'
+                        ComparisonValue = $detectionValueValue  # New line added to include ComparisonValue
+                    }
+
+                    # Output the result to CSV in the same subfolder
+                    $csvData | Export-Csv -Path (Join-Path -Path $subfolder.FullName -ChildPath "Output.csv") -NoTypeInformation -Force
+                    Write-Host "Data exported to: $(Join-Path -Path $subfolder.FullName -ChildPath 'Output.csv')"
+                }
+
+                Write-Host "Processing folder $($subfolder.FullName) for Registry detection."
+            }
+            default {
+                Write-Host "Unknown DetectionMethod '$detectionMethod' in folder $($subfolder.FullName). Skipping folder."
+                continue
+            }
+        }
+    } else {
+        Write-Host "No DetectionMethod.txt file found in: $($subfolder.FullName). Skipping folder."
+        continue
+    }
+}

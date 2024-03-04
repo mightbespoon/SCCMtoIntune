@@ -1,0 +1,185 @@
+# Pre-reqs = Install-Module MSGraph, IntuneWin32App, AzureAD, and PSIntuneAuth
+Import-Module MSGraph
+Import-Module IntuneWin32App
+Import-Module AzureAD
+Import-Module PSIntuneAuth
+
+# Connect to Graph API
+$TenantID = Read-Host "Enter your TenantID (i.e., domain.com or domain.onmicrosoft.com)"
+Connect-MSIntuneGraph -TenantID $TenantID
+
+# Local path to the folder containing IntuneWin32App packages
+$FolderPath = 'Path\to\your\Intune App Packages'
+
+$AppPackages = Get-ChildItem -Path $FolderPath -Recurse -Filter *.intunewin | Where-Object { $_.PSIsContainer -eq $false }
+
+# Function to get product code from file
+function Get-ProductCodeFromFile {
+    param ([string]$FolderPath)
+
+    $ProductCodeFile = Join-Path $FolderPath 'ProductCode.txt'
+    if (Test-Path $ProductCodeFile) {
+        return Get-Content $ProductCodeFile
+    } else {
+        Write-Warning "ProductCode.txt not found in the specified folder."
+        return $null
+    }
+}
+
+# Function to get detection method path from file (Assuming implementation)
+function Get-DetectionMethodPathFromFile {
+    param ([string]$FolderPath)
+
+    $DetectionMethodPathFile = Join-Path $FolderPath 'Path.txt'
+    if (Test-Path $DetectionMethodPathFile) {
+        return Get-Content $DetectionMethodPathFile
+    } else {
+        Write-Warning "Path.txt not found in the specified folder."
+        return $null
+    }
+}
+
+# Function to get file from file (Assuming implementation)
+function Get-FileFromFile {
+    param ([string]$FolderPath)
+
+    $FileFile = Join-Path $FolderPath 'File.txt'
+    if (Test-Path $FileFile) {
+        return Get-Content $FileFile
+    } else {
+        Write-Warning "File.txt not found in the specified folder."
+        return $null
+    }
+}
+
+# Function to get install command from file
+function Get-InstallCommandFromFile {
+    param ([string]$FolderPath)
+
+    $InstallCommandFile = Join-Path $FolderPath 'InstallCommand.txt'
+    if (Test-Path $InstallCommandFile) {
+        return Get-Content $InstallCommandFile
+    } else {
+        Write-Warning "InstallCommand.txt not found in the specified folder."
+        return $null
+    }
+}
+# Function to get detection method type from file
+function Get-DetectionMethodTypeFromFile {
+    param ([string]$FolderPath)
+
+    $DetectionMethodFile = Join-Path $FolderPath 'DetectionMethod.txt'
+    if (Test-Path $DetectionMethodFile) {
+        return Get-Content $DetectionMethodFile
+    } else {
+        Write-Warning "DetectionMethod.txt not found in the specified folder."
+        return $null
+    }
+}
+# Function to translate operator values
+function Translate-Operator($operator) {
+    switch ($operator) {
+        "Equals" { return "equal" }
+        "NotEquals" { return "notEqual" }
+        "GreaterThan" { return "greaterThan" }
+        "LessThan" { return "lessThan" }
+        "GreaterEquals" { return "greaterThanOrEqual" }
+        "LessThanOrEquals" { return "lessThanOrEqual" }
+        default {
+            Write-Warning "Unsupported operator: $operator"
+            return $null
+        }
+    }
+}
+# Function to create a new detection rule based on RuleType
+function Create-DetectionRuleFromCSV($csvPath) {
+    $csvData = Import-Csv -Path $csvPath
+
+    foreach ($row in $csvData) {
+        $ruleType = $row.RuleType
+
+        
+
+        switch ($ruleType) {
+            "VersionComparison" {
+                $versionComparisonOperator = Translate-Operator $row.Operator
+                New-IntuneWin32AppDetectionRuleRegistry -VersionComparison -KeyPath $row.KeyPath -ValueName $row.ValueName  -VersionComparisonOperator $versionComparisonOperator -VersionComparisonValue $row.DetectionValue 
+            }
+            "ExistenceDetection" {
+                New-IntuneWin32AppDetectionRuleRegistry -Existence -KeyPath $row.KeyPath -ValueName $row.ValueName  -DetectionType exists
+            }
+            "StringComparison" {
+                $stringComparisonOperator = Translate-Operator $row.Operator
+                New-IntuneWin32AppDetectionRuleRegistry -StringComparison -KeyPath $row.KeyPath -ValueName $row.ValueName  -StringComparisonOperator $stringComparisonOperator -StringComparisonValue $row.ComparisonValue
+ 
+            }
+            default {
+                Write-Warning "Unsupported rule type: $ruleType"
+            }
+        }
+    }
+}
+
+
+
+
+
+foreach ($IntuneWinFile in $AppPackages) {
+    # Clear all variables at the beginning of each iteration
+    Clear-Variable -Name ProductCode, DetectionMethodPath, File, InstallCommand, DetectionRule -ErrorAction SilentlyContinue
+
+    # Get the display name and description from the subfolder name
+    $SubfolderName = $IntuneWinFile.Directory.Name
+    $DisplayName = $SubfolderName
+    $Description = $SubfolderName
+
+    # Fetch necessary data from files
+    $ProductCode = Get-ProductCodeFromFile -FolderPath $IntuneWinFile.Directory.FullName
+    $DetectionMethodPath = Get-DetectionMethodPathFromFile -FolderPath $IntuneWinFile.Directory.FullName
+    $File = Get-FileFromFile -FolderPath $IntuneWinFile.Directory.FullName
+    $InstallCommand = Get-InstallCommandFromFile -FolderPath $IntuneWinFile.Directory.FullName
+    $DetectionMethodType = Get-DetectionMethodTypeFromFile -FolderPath $IntuneWinFile.Directory.FullName
+
+    # Create DetectionRule based on available data
+    $DetectionRule = $null
+    switch ($DetectionMethodType) {
+        "File" {
+            if ($File) {
+                $DetectionRule = New-IntuneWin32AppDetectionRuleFile -Existence -FileorFolder $File -Path $DetectionMethodPath -DetectionType exists
+            }
+        }
+        "MSI" {
+            if ($ProductCode) {
+                $DetectionRule = New-IntuneWin32AppDetectionRuleMSI -ProductCode $ProductCode
+            }
+        }
+        "Registry" {
+            # Call the Create-DetectionRuleFromCSV function with the path to the CSV file
+            $CSVPath = Join-Path $IntuneWinFile.Directory.FullName 'output.csv'
+            $DetectionRule = Create-DetectionRuleFromCSV -csvPath $CSVPath
+        }
+        default {
+            Write-Warning "Unsupported detection method type: $DetectionMethodType"
+        }
+    }
+
+    # Ensure a DetectionRule is set
+    if (-not $DetectionRule) {
+        Write-Warning "No valid detection rule found for package: $DisplayName"
+        continue
+    }
+    # Create Requirement Rule (32/64 bit and minimum Windows Version)
+    $ArchitectureRequired = "x64"
+    $MinimumOSBuild = "W10_1909"
+    $RequirementRule = New-IntuneWin32AppRequirementRule -Architecture $ArchitectureRequired -MinimumSupportedOperatingSystem $MinimumOSBuild
+
+    # Set the uninstall command to the contents of UninstallCommand.txt
+    $UninstallCommandFile = Join-Path $IntuneWinFile.Directory.FullName 'UninstallCommand.txt'
+    $UninstallCommand = if (Test-Path $UninstallCommandFile) { Get-Content $UninstallCommandFile } else { throw "UninstallCommand.txt not found in the specified folder." }
+
+    # Set a placeholder value for the Publisher (replace 'YourPublisher' with an appropriate value)
+    $Publisher = '_'
+
+    # Build the App and Upload to Intune
+    Add-IntuneWin32App -FilePath $IntuneWinFile.FullName -DisplayName $DisplayName -Description $Description -InstallExperience "system" -RestartBehavior "suppress" -DetectionRule $DetectionRule  -RequirementRule $RequirementRule -Publisher $Publisher -InstallCommand "$InstallCommand" -UninstallCommand $UninstallCommand -Verbose
+}

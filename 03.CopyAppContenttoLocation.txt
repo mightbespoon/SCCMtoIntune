@@ -1,0 +1,21 @@
+# Path to your CSV file
+$csvPath = 'Path\to\your\csv'
+
+# Read the CSV file
+$data = Import-Csv -Path $csvPath
+
+# Iterate through each row in the CSV
+foreach ($row in $data) {
+    # Extract values from the CSV columns
+    $folderName = $row.AppName  
+    $sourcePath = $row.ContentLocation  
+    # Create a folder for each item in the first column
+    $folderPath = "Folder\you\want\app\files\in"
+    New-Item -ItemType Directory -Path $folderPath -Force
+
+    # Copy contents from the file path in the second column to the new folder
+    Copy-Item -Path $sourcePath -Destination $folderPath -Recurse -Force
+}
+
+Write-Output "Folders and contents copied successfully."
+

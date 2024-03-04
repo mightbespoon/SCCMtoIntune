@@ -1,0 +1,66 @@
+# Specify the main folder path
+$mainFolderPath = "Path\to\your\Intune App Packages"
+
+# Function to extract SettingSourceType from SettingReference XML element
+function Get-SettingSourceTypeFromXML {
+    param (
+        [xml]$xmlContent
+    )
+
+    # Check if the XML content is not null
+    if ($xmlContent -ne $null) {
+        # Extract SettingSourceType attribute value from SettingReference
+        $settingSourceType = $xmlContent.EnhancedDetectionMethod.Rule.Expression.Operands.SettingReference.SettingSourceType
+
+        # Check if SettingSourceType is not null or empty
+        if (-not [string]::IsNullOrEmpty($settingSourceType)) {
+            return $settingSourceType
+        }
+    }
+
+    # If SettingSourceType is not found or empty, return "Unknown"
+    return "Unknown"
+}
+
+# Iterate through each subfolder
+$subfolders = Get-ChildItem -Path $mainFolderPath -Directory
+
+foreach ($subfolder in $subfolders) {
+    # Get the subfolder path
+    $subfolderPath = $subfolder.FullName
+
+    # Construct the path to Detection.xml
+    $xmlFilePath = Join-Path -Path $subfolderPath -ChildPath 'Detection.xml'
+
+    # Check if Detection.xml exists
+    if (Test-Path $xmlFilePath) {
+        try {
+            # Load XML content from Detection.xml
+            $xmlContent = [xml](Get-Content -Path $xmlFilePath)
+
+            # Use the function to extract SettingSourceType
+            $settingSourceType = Get-SettingSourceTypeFromXML -xmlContent $xmlContent
+
+            # Specify the output file path
+            $outputFilePath = Join-Path -Path $subfolderPath -ChildPath 'DetectionMethod.txt'
+
+            # Write SettingSourceType value to text file
+            $settingSourceType | Out-File -FilePath $outputFilePath -Encoding ASCII
+
+            Write-Host "DetectionMethod value written to $($outputFilePath)"
+        } catch {
+            Write-Host "Error processing $($xmlFilePath): $_"
+        }
+    } else {
+        # If Detection.xml is not found, set SettingSourceType to "MSI"
+        $settingSourceType = "MSI"
+
+        # Specify the output file path
+        $outputFilePath = Join-Path -Path $subfolderPath -ChildPath 'DetectionMethod.txt'
+
+        # Write SettingSourceType value to text file
+        $settingSourceType | Out-File -FilePath $outputFilePath -Encoding ASCII
+
+        Write-Host "DetectionMethod value (MSI) written to $($outputFilePath)"
+    }
+}
