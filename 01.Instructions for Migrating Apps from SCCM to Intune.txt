@@ -7,6 +7,7 @@ https://github.com/Microsoft/Microsoft-Win32-Content-Prep-Tool
 4. In the CSV find and replace all "LocalSystem<" with "<"and "MSISystem{" with "{" 
 (I'm positive there's a way to modify the querry to not return that as part of the data, but I'm bad at SQL"
 5.If there are applications you do not wish to migrate remove them from your CSV.
+In a PS terminal
 6.Run the CopyAppContenttoLocation script.
 7.Run the PackageApps script
 8.Run WriteDetectionMethodsandProductCodesCommandstoAppFolders
